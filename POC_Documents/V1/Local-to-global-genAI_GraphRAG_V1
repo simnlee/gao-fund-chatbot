@@ -55,6 +55,9 @@ details of the question?
 
 
 For a given community levels (Fig.2.2,2.2 & 3), the global answer to any user query is generated as follows:
+Propsed chatbot architecture
+
+![proposed Architecture](https://github.com/neo4j-labs/llm-graph-builder/blob/main/POC_Documents/V1/figure.4.jpg)
 
 • Prepare community summaries. Community summaries are randomly shuffled and divided
 into chunks of pre-specified token size. This ensures relevant information is distributed
