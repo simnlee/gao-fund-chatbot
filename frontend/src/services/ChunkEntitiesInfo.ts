@@ -13,6 +13,7 @@ const chunkEntitiesAPI = async (userCredentials: UserCredentials, chunk_ids: str
     const response: ChatInfo_APIResponse = await axios.post(`${url()}/chunk_entities`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
+        'Content-Encoding':'gzip'
       },
     });
     console.log('response api', response);

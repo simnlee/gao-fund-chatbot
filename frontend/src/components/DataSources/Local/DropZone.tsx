@@ -124,6 +124,7 @@ const DropZone: FunctionComponent = () => {
           const apiResponse = await axios.post<UploadResponse>(`${url()}/upload`, formData, {
             headers: {
               'Content-Type': 'multipart/form-data',
+              'Content-Encoding':'gzip'
             },
           });
 

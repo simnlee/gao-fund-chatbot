@@ -15,6 +15,7 @@ const graphQueryAPI = async (userCredentials: UserCredentials, query_type: strin
     const response = await axios.post(`${url()}/graph_query`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
+        'Content-Encoding':'gzip'
       },
     });
     return response;

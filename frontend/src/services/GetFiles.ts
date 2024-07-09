@@ -8,7 +8,11 @@ export const getSourceNodes = async (userCredentials: UserCredentials) => {
     const response = await axios.get<SourceListServerData>(
       `${url()}/sources_list?uri=${userCredentials.uri}&database=${userCredentials.database}&userName=${
         userCredentials.userName
-      }&password=${encodedstr}`
+      }&password=${encodedstr}`,{
+        headers:{
+          'Content-Encoding':'gzip'
+        }
+      }
     );
     return response;
   } catch (error) {

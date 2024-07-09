@@ -58,7 +58,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 is_gemini_enabled = os.environ.get("GEMINI_ENABLED", "False").lower() in ("true", "1", "yes")
 if is_gemini_enabled:
@@ -232,12 +232,15 @@ async def get_source_list(uri:str, userName:str, password:str, database:str=None
     Calls 'get_source_list_from_graph' which returns list of sources which already exist in databse
     """
     try:
+        start_time = time.time()
         decoded_password = decode_password(password)
         if " " in uri:
             uri = uri.replace(" ","+")
         result = await asyncio.to_thread(get_source_list_from_graph,uri,userName,decoded_password,database)
         josn_obj = {'api_name':'sources_list','db_url':uri, 'logging_time': formatted_time(datetime.now(timezone.utc))}
         logger.log_struct(josn_obj)
+        process_time = time.time() - start_time
+        print(f"Processed time: {process_time}")
         return create_api_response("Success",data=result)
     except Exception as e:
         job_status = "Failed"
@@ -310,9 +313,12 @@ async def chat_bot(uri=Form(None),model=Form(None),userName=Form(None), password
 async def chunk_entities(uri=Form(None),userName=Form(None), password=Form(None), chunk_ids=Form(None)):
     try:
         logging.info(f"URI: {uri}, Username: {userName}, chunk_ids: {chunk_ids}")
+        start_time = time.time()
         result = await asyncio.to_thread(get_entities_from_chunkids,uri=uri, username=userName, password=password, chunk_ids=chunk_ids)
         josn_obj = {'api_name':'chunk_entities','db_url':uri, 'logging_time': formatted_time(datetime.now(timezone.utc))}
         logger.log_struct(josn_obj)
+        process_time = time.time() - start_time
+        print(f"Processed time in chunk_entities: {process_time}")
         return create_api_response('Success',data=result)
     except Exception as e:
         job_status = "Failed"
@@ -332,6 +338,7 @@ async def graph_query(
 ):
     try:
         print(document_names)
+        start_time = time.time()
         result = await asyncio.to_thread(
             get_graph_results,
             uri=uri,
@@ -341,6 +348,8 @@ async def graph_query(
         )
         josn_obj = {'api_name':'graph_query','db_url':uri,'document_names':document_names, 'logging_time': formatted_time(datetime.now(timezone.utc))}
         logger.log_struct(josn_obj)
+        process_time = time.time() - start_time
+        print(f"Processed time in graph_query: {process_time}")
         return create_api_response('Success', data=result)
     except Exception as e:
         job_status = "Failed"
@@ -389,11 +398,14 @@ async def upload_large_file_into_chunks(file:UploadFile = File(...), chunkNumber
                                         originalname=Form(None), model=Form(None), uri=Form(None), userName=Form(None), 
                                         password=Form(None), database=Form(None)):
     try:
+        start_time = time.time()
         graph = create_graph_database_connection(uri, userName, password, database)
         result = await asyncio.to_thread(upload_file, graph, model, file, chunkNumber, totalChunks, originalname, uri, CHUNK_DIR, MERGED_DIR)
         josn_obj = {'api_name':'upload','db_url':uri, 'logging_time': formatted_time(datetime.now(timezone.utc))}
         logger.log_struct(josn_obj)
         if int(chunkNumber) == int(totalChunks):
+            process_time = time.time() - start_time
+            print(f"Processed time: {process_time}")
             return create_api_response('Success',data=result, message='Source Node Created Successfully')
         else:
             return create_api_response('Success', message=result)
