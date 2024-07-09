@@ -240,7 +240,7 @@ async def get_source_list(uri:str, userName:str, password:str, database:str=None
         josn_obj = {'api_name':'sources_list','db_url':uri, 'logging_time': formatted_time(datetime.now(timezone.utc))}
         logger.log_struct(josn_obj)
         process_time = time.time() - start_time
-        print(f"Processed time: {process_time}")
+        print(f"Processed time sources_list: {process_time}")
         return create_api_response("Success",data=result)
     except Exception as e:
         job_status = "Failed"
@@ -290,6 +290,7 @@ async def chat_bot(uri=Form(None),model=Form(None),userName=Form(None), password
     qa_rag_start_time = time.time()
     try:
         # database = "neo4j"
+        start_time = time.time()
         graph = create_graph_database_connection(uri, userName, password, database)
         result = await asyncio.to_thread(QA_RAG,graph=graph,model=model,question=question,document_names=document_names,session_id=session_id,mode=mode)
 
@@ -299,6 +300,8 @@ async def chat_bot(uri=Form(None),model=Form(None),userName=Form(None), password
         
         josn_obj = {'api_name':'chat_bot','db_url':uri,'session_id':session_id, 'logging_time': formatted_time(datetime.now(timezone.utc))}
         logger.log_struct(josn_obj)
+        process_time = time.time() - start_time
+        print(f"Processed time sources_list: {process_time}")
         return create_api_response('Success',data=result)
     except Exception as e:
         job_status = "Failed"
