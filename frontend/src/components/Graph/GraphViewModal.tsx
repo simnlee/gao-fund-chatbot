@@ -40,15 +40,36 @@ const GraphViewModal: React.FunctionComponent<GraphViewModalProps> = ({
   const { userCredentials } = useCredentials();
   const [scheme, setScheme] = useState<Scheme>({});
   const [newScheme, setNewScheme] = useState<Scheme>({});
+  // const handleCheckboxChange = (graph: GraphType) => {
+  //   const currentIndex = graphType.indexOf(graph);
+  //   const newGraphSelected = [...graphType];
+  //   if (currentIndex === -1) {
+  //     newGraphSelected.push(graph);
+  //     initGraph(newGraphSelected, allNodes, allRelationships, scheme);
+  //   } else {
+  //     newGraphSelected.splice(currentIndex, 1);
+  //     initGraph(newGraphSelected, allNodes, allRelationships, scheme);
+  //   }
+  //   setGraphType(newGraphSelected);
+  // };
+
   const handleCheckboxChange = (graph: GraphType) => {
     const currentIndex = graphType.indexOf(graph);
     const newGraphSelected = [...graphType];
     if (currentIndex === -1) {
       newGraphSelected.push(graph);
-      initGraph(newGraphSelected, allNodes, allRelationships, scheme);
     } else {
       newGraphSelected.splice(currentIndex, 1);
+    }
+    if (newGraphSelected.length > 0) {
+      setStatus('unknown')
+      setStatusMessage('');
       initGraph(newGraphSelected, allNodes, allRelationships, scheme);
+    } else {
+      setStatus('danger')
+      setStatusMessage(graphLabels.selectCheckbox);
+      setNodes([]);
+      setRelationships([]);
     }
     setGraphType(newGraphSelected);
   };
@@ -57,10 +78,10 @@ const GraphViewModal: React.FunctionComponent<GraphViewModalProps> = ({
     graphType.includes('DocumentChunk') && graphType.includes('Entities')
       ? queryMap.DocChunkEntities
       : graphType.includes('DocumentChunk')
-      ? queryMap.DocChunks
-      : graphType.includes('Entities')
-      ? queryMap.Entities
-      : '';
+        ? queryMap.DocChunks
+        : graphType.includes('Entities')
+          ? queryMap.Entities
+          : '';
 
   const handleZoomToFit = () => {
     nvlRef.current?.fit(
@@ -91,10 +112,10 @@ const GraphViewModal: React.FunctionComponent<GraphViewModalProps> = ({
       const nodeRelationshipData =
         viewPoint === graphLabels.showGraphView
           ? await graphQueryAPI(
-              userCredentials as UserCredentials,
-              graphQuery,
-              selectedRows?.map((f) => f.name)
-            )
+            userCredentials as UserCredentials,
+            graphQuery,
+            selectedRows?.map((f) => f.name)
+          )
           : await graphQueryAPI(userCredentials as UserCredentials, graphQuery, [inspectedName ?? '']);
       return nodeRelationshipData;
     } catch (error: any) {
@@ -222,8 +243,8 @@ const GraphViewModal: React.FunctionComponent<GraphViewModalProps> = ({
     if (allNodes.length > 0 && allRelationships.length > 0) {
       const { filteredNodes, filteredRelations, filteredScheme } = filterData(
         graphType,
-        finalNodes ?? [],
-        finalRels ?? [],
+        finalNodes,
+        finalRels,
         schemeVal
       );
       setNodes(filteredNodes);
@@ -231,6 +252,9 @@ const GraphViewModal: React.FunctionComponent<GraphViewModalProps> = ({
       setNewScheme(filteredScheme);
     }
   };
+
+  console.log('node', graphType, nodes);
+  console.log('rel', graphType, relationships);
 
   return (
     <>
@@ -266,10 +290,6 @@ const GraphViewModal: React.FunctionComponent<GraphViewModalProps> = ({
             ) : nodes.length === 0 && relationships.length === 0 && graphType.length !== 0 ? (
               <div className='my-40 flex items-center justify-center'>
                 <Banner name='graph banner' description={graphLabels.noEntities} type='danger' />
-              </div>
-            ) : graphType.length === 0 ? (
-              <div className='my-40 flex items-center justify-center'>
-                <Banner name='graph banner' description={graphLabels.selectCheckbox} type='danger' />
               </div>
             ) : (
               <>
