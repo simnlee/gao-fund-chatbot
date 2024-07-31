@@ -208,23 +208,17 @@ class graphDBdataAccess:
             MATCH (d:Document) where d.fileName in $filename_list and d.fileSource in $source_types_list
             with collect(d) as documents 
             unwind documents as d
-            optional match (d)<-[:PART_OF]-(c:Chunk)
-            // if delete-entities checkbox is set
-            call { with  c, documents
-                match (c)-[:HAS_ENTITY]->(e)
-                // belongs to another document
-                where not exists {  (d2)<-[:PART_OF]-()-[:HAS_ENTITY]->(e) WHERE NOT d2 IN documents }
-                detach delete e
-                return count(*) as entities
-            } 
-            detach delete c, d
-            return sum(entities) as deletedEntities, count(*) as deletedChunks
+            optional match (d)-[:RELATIONSHIP*0..]-(related)
+            detach delete d, related
+            return count(related) as deletedEntities
             """    
         param = {"filename_list" : filename_list, "source_types_list": source_types_list}
         if deleteEntities == "true":
+            print(f'Delete with Entities is in if block {deleteEntities}')
             result = self.execute_query(query_to_delete_document_and_entities, param)
             logging.info(f"Deleting {len(filename_list)} documents = '{filename_list}' from '{source_types_list}' from database")
         else :
+            print(f'Delete without Entities else block is {deleteEntities}')
             result = self.execute_query(query_to_delete_document, param)    
             logging.info(f"Deleting {len(filename_list)} documents = '{filename_list}' from '{source_types_list}' with their entities from database")
         return result, len(filename_list)

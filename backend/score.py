@@ -469,7 +469,7 @@ async def delete_document_and_entities(uri=Form(),
         graphDb_data_Access = graphDBdataAccess(graph)
         result, files_list_size = await asyncio.to_thread(graphDb_data_Access.delete_file_from_graph, filenames, source_types, deleteEntities, MERGED_DIR, uri)
         entities_count = result[0]['deletedEntities'] if 'deletedEntities' in result[0] else 0
-        message = f"Deleted {files_list_size} documents with {entities_count} entities from database"
+        message = f"Deleted {files_list_size} documents with entities from database"
         josn_obj = {'api_name':'delete_document_and_entities','db_url':uri, 'logging_time': formatted_time(datetime.now(timezone.utc))}
         logger.log_struct(josn_obj)
         return create_api_response('Success',message=message)
