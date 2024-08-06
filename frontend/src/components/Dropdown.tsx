@@ -54,7 +54,7 @@ const DropdownComponent: React.FC<ReusableDropdownProps> = ({
               fluid
             />
           </Tip.Trigger>
-          <Tip.Content>LLM Model used for Extraction & Chat</Tip.Content>
+          <Tip.Content></Tip.Content>  {/* "LLM used for extraction and chat" */}
         </Tip>
         {children}
       </div>
