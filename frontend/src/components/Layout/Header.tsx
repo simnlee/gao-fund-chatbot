@@ -1,5 +1,5 @@
-import Neo4jLogoBW from '../../logo.svg';
-import Neo4jLogoColor from '../../logo-color.svg';
+import Neo4jLogoColor from '../../logo.svg';
+import Neo4jLogoBW from '../../logo-color.svg';
 import {
   MoonIconOutline,
   SunIconOutline,
