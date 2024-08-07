@@ -19,6 +19,7 @@ from langchain_core.prompts import (
     HumanMessagePromptTemplate,
     PromptTemplate,
 )
+from langchain_core.messages import SystemMessage
 from langchain_core.output_parsers.json import JsonOutputParser 
 import boto3
 import google.auth
@@ -39,6 +40,7 @@ system_prompt_parts = [
 ]
 
 GRAPH_BUILDER_SYSTEM_PROMPT = "".join(system_prompt_parts)
+system_message = SystemMessage(content = GRAPH_BUILDER_SYSTEM_PROMPT)
 
 GRAPH_BUILDER_HUMAN_PROMPT = """Based on the following example, extract entities and 
         relations from the provided text. Attempt to extract as many entities and relations as you can.
@@ -106,23 +108,15 @@ EXAMPLES = [
 parser = JsonOutputParser(pydantic_object = UnstructuredRelation)
 human_prompt = PromptTemplate(template = GRAPH_BUILDER_HUMAN_PROMPT, 
                               input_variables = ['input'], 
-                              partial_variables = {'format_instructions': parser.get_format_instructions(),
-                                                   'examples': EXAMPLES
-                                                   }
+                              partial_variables = {
+                                  'examples': EXAMPLES,
+                                  'format_instructions': parser.get_format_instructions(),
+                                }
 )
 
-DEFAULT_PROMPT = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            GRAPH_BUILDER_SYSTEM_PROMPT,
-        ),
-        (
-            "human",
-            GRAPH_BUILDER_HUMAN_PROMPT,
-        ),
-    ]
-)
+human_message_prompt = HumanMessagePromptTemplate(prompt=human_prompt)
+
+DEFAULT_PROMPT = ChatPromptTemplate.from_messages([system_message, human_message_prompt])
 
 def get_llm(model: str):
     """Retrieve the specified language model based on the model name."""
