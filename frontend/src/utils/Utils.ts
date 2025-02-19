@@ -1,6 +1,6 @@
 import { calcWordColor } from '@neo4j-devtools/word-color';
-import type { Node, Relationship } from '@neo4j-nvl/base';
-import { GraphType, Messages, Scheme } from '../types';
+import type { Relationship } from '@neo4j-nvl/base';
+import { Entity, ExtendedNode, GraphType, Messages, Scheme } from '../types';
 
 // Get the Url
 export const url = () => {
@@ -55,11 +55,11 @@ export const statusCheck = (status: string) => {
 
 // Graph Functions
 export const constructQuery = (queryTochange: string, docLimit: string) => {
-  return `MATCH docs = (d:Document {status:'Completed'}) 
+  return `MATCH docs = (d:__Document__ {status:'Completed'}) 
   WITH docs, d ORDER BY d.createdAt DESC 
   LIMIT ${docLimit}
   CALL { WITH d
-    OPTIONAL MATCH chunks=(d)<-[:PART_OF]-(c:Chunk)
+    OPTIONAL MATCH chunks=(d)<-[:__PART_OF__]-(c:__Chunk__)
     RETURN chunks, c LIMIT 50
   }
   WITH [] 
@@ -72,11 +72,11 @@ export const constructQuery = (queryTochange: string, docLimit: string) => {
 
 export const constructDocQuery = (queryTochange: string) => {
   return `
-MATCH docs = (d:Document {status:'Completed'}) 
+MATCH docs = (d:__Document__ {status:'Completed'}) 
 WHERE d.fileName = $document_name
 WITH docs, d ORDER BY d.createdAt DESC 
 CALL { WITH d
-  OPTIONAL MATCH chunks=(d)<-[:PART_OF]-(c:Chunk)
+  OPTIONAL MATCH chunks=(d)<-[:__PART_OF__]-(c:__Chunk__)
   RETURN chunks, c LIMIT 50
 }
 WITH [] 
@@ -88,10 +88,10 @@ RETURN nodes, rels`;
 };
 
 export const getSize = (node: any) => {
-  if (node.labels[0] == 'Document') {
+  if (node.labels[0] == '__Document__') {
     return 40;
   }
-  if (node.labels[0] == 'Chunk') {
+  if (node.labels[0] == '__Chunk__') {
     return 30;
   }
   return undefined;
@@ -111,17 +111,17 @@ export const getNodeCaption = (node: any) => {
 };
 
 export const getIcon = (node: any) => {
-  if (node.labels[0] == 'Document') {
+  if (node.labels[0] == '__Document__') {
     return 'paginate-filter-text.svg';
   }
-  if (node.labels[0] == 'Chunk') {
+  if (node.labels[0] == '__Chunk__') {
     return 'paragraph-left-align.svg';
   }
   return undefined;
 };
 export function extractPdfFileName(url: string): string {
   const splitUrl = url.split('/');
-  const encodedFileName = splitUrl[splitUrl.length - 1].split('?')[0];
+  const [encodedFileName] = splitUrl[splitUrl.length - 1].split('?');
   const decodedFileName = decodeURIComponent(encodedFileName);
   if (decodedFileName.includes('/')) {
     const splitedstr = decodedFileName.split('/');
@@ -130,7 +130,7 @@ export function extractPdfFileName(url: string): string {
   return decodedFileName;
 }
 
-export const processGraphData = (neoNodes: Node[], neoRels: Relationship[]) => {
+export const processGraphData = (neoNodes: ExtendedNode[], neoRels: Relationship[]) => {
   const schemeVal: Scheme = {};
   let iterator = 0;
   const labels: string[] = neoNodes.map((f: any) => f.labels);
@@ -140,7 +140,7 @@ export const processGraphData = (neoNodes: Node[], neoRels: Relationship[]) => {
       iterator += 1;
     }
   });
-  const newNodes: Node[] = neoNodes.map((g: any) => {
+  const newNodes: ExtendedNode[] = neoNodes.map((g: any) => {
     return {
       id: g.element_id,
       size: getSize(g),
@@ -167,63 +167,38 @@ export const processGraphData = (neoNodes: Node[], neoRels: Relationship[]) => {
 
 export const filterData = (
   graphType: GraphType[],
-  allNodes: Node[],
+  allNodes: ExtendedNode[],
   allRelationships: Relationship[],
   scheme: Scheme
 ) => {
-  let filteredNodes: Node[] = [];
+  let filteredNodes: ExtendedNode[] = [];
   let filteredRelations: Relationship[] = [];
   let filteredScheme: Scheme = {};
-  const entityTypes = Object.keys(scheme).filter((type) => type !== 'Document' && type !== 'Chunk');
-  if (graphType.includes('Document') && !graphType.includes('Entities') && !graphType.includes('Chunk')) {
-    // Document only
-    // @ts-ignore
-    filteredNodes = allNodes.filter((node) => node.labels.includes('Document'));
-    filteredScheme = { Document: scheme.Document };
-  } else if (!graphType.includes('Document') && graphType.includes('Entities') && !graphType.includes('Chunk')) {
+  const entityTypes = Object.keys(scheme).filter((type) => type !== '__Document__' && type !== '__Chunk__');
+
+  if (graphType.includes('DocumentChunk') && !graphType.includes('Entities')) {
+    // Document + Chunk
+    filteredNodes = allNodes.filter(
+      (node) => node.labels.includes('__Document__') || node.labels.includes('__Chunk__')
+    );
+    filteredRelations = allRelationships.filter((rel) =>
+      ['__PART_OF__', '__FIRST_CHUNK__', '__SIMILAR__', '__NEXT_CHUNK__'].includes(rel.caption ?? '')
+    );
+    filteredScheme = { __Document__: scheme.__Document__, __Chunk__: scheme.__Chunk__ };
+  } else if (graphType.includes('Entities') && !graphType.includes('DocumentChunk')) {
     // Only Entity
-    // @ts-ignore
-    const entityNode = allNodes.filter((node) => !node.labels.includes('Document') && !node.labels.includes('Chunk'));
+    const entityNode = allNodes.filter(
+      (node) => !node.labels.includes('__Document__') && !node.labels.includes('__Chunk__')
+    );
     filteredNodes = entityNode ? entityNode : [];
-    // @ts-ignore
     filteredRelations = allRelationships.filter(
-      (rel) => !['PART_OF', 'FIRST_CHUNK', 'HAS_ENTITY', 'SIMILAR', 'NEXT_CHUNK'].includes(rel.caption)
+      (rel) =>
+        !['__PART_OF__', '__FIRST_CHUNK__', '__HAS_ENTITY__', '__SIMILAR__', '__NEXT_CHUNK__'].includes(
+          rel?.caption ?? ''
+        )
     );
     filteredScheme = Object.fromEntries(entityTypes.map((key) => [key, scheme[key]])) as Scheme;
-  } else if (!graphType.includes('Document') && !graphType.includes('Entities') && graphType.includes('Chunk')) {
-    // Only Chunk
-    // @ts-ignore
-    filteredNodes = allNodes.filter((node) => node.labels.includes('Chunk'));
-    // @ts-ignore
-    filteredRelations = allRelationships.filter((rel) => ['SIMILAR', 'NEXT_CHUNK'].includes(rel.caption));
-    filteredScheme = { Chunk: scheme.Chunk };
-  } else if (graphType.includes('Document') && graphType.includes('Entities') && !graphType.includes('Chunk')) {
-    // Document + Entity
-    // @ts-ignore
-    filteredNodes = allNodes.filter(
-      (node) =>
-        node.labels.includes('Document') || (!node.labels.includes('Document') && !node.labels.includes('Chunk'))
-    );
-    // @ts-ignore
-    filteredRelations = allRelationships.filter(
-      (rel) => !['PART_OF', 'FIRST_CHUNK', 'HAS_ENTITY', 'SIMILAR', 'NEXT_CHUNK'].includes(rel.caption)
-    );
-  } else if (graphType.includes('Document') && !graphType.includes('Entities') && graphType.includes('Chunk')) {
-    // Document + Chunk
-    // @ts-ignore
-    filteredNodes = allNodes.filter((node) => node.labels.includes('Document') || node.labels.includes('Chunk'));
-    // @ts-ignore
-    filteredRelations = allRelationships.filter((rel) =>
-      ['PART_OF', 'FIRST_CHUNK', 'SIMILAR', 'NEXT_CHUNK'].includes(rel.caption)
-    );
-    filteredScheme = { Document: scheme.Document, Chunk: scheme.Chunk };
-  } else if (!graphType.includes('Document') && graphType.includes('Entities') && graphType.includes('Chunk')) {
-    // Chunk + Entity
-    // @ts-ignore
-    filteredNodes = allNodes.filter((node) => !node.labels.includes('Document'));
-    // @ts-ignore
-    filteredRelations = allRelationships.filter((rel) => !['PART_OF', 'FIRST_CHUNK'].includes(rel.caption));
-  } else if (graphType.includes('Document') && graphType.includes('Entities') && graphType.includes('Chunk')) {
+  } else if (graphType.includes('DocumentChunk') && graphType.includes('Entities')) {
     // Document + Chunk + Entity
     filteredNodes = allNodes;
     filteredRelations = allRelationships;
@@ -250,4 +225,14 @@ export const calculateProcessingTime = (fileSizeBytes: number, processingTimePer
 
 export const capitalize = (word: string): string => {
   return `${word[0].toUpperCase()}${word.slice(1)}`;
+};
+export const parseEntity = (entity: Entity) => {
+  const { labels, properties } = entity;
+  const [label] = labels;
+  const text = properties.id;
+  return { label, text };
+};
+
+export const titleCheck = (title: string) => {
+  return title === '__Chunk__' || title === '__Document__';
 };

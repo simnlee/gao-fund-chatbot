@@ -1,49 +1,62 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
-import ConnectionModal from './Popups/ConnectionModal/ConnectionModal';
-import FileTable, { ChildRef } from './FileTable';
-import { Button, Typography, Flex, StatusIndicator } from '@neo4j-ndl/react';
+import { useEffect, useState, useMemo, useRef, Suspense } from 'react';
+import FileTable from './FileTable';
+import { Button, Typography, Flex, StatusIndicator, useMediaQuery } from '@neo4j-ndl/react';
 import { useCredentials } from '../context/UserCredentials';
 import { useFileContext } from '../context/UsersFiles';
 import CustomAlert from './UI/Alert';
 import { extractAPI } from '../utils/FileAPI';
-import { ContentProps, CustomFile, OptionType, UserCredentials, alertStateType } from '../types';
+import {
+  ChildRef,
+  ContentProps,
+  CustomFile,
+  OptionType,
+  UserCredentials,
+  alertStateType,
+  connectionState,
+} from '../types';
 import deleteAPI from '../services/DeleteFiles';
 import { postProcessing } from '../services/PostProcessing';
-import DeletePopUp from './Popups/DeletePopUp/DeletePopUp';
 import { triggerStatusUpdateAPI } from '../services/ServerSideStatusUpdateAPI';
 import useServerSideEvent from '../hooks/useSse';
 import { useSearchParams } from 'react-router-dom';
-import ConfirmationDialog from './Popups/LargeFilePopUp/ConfirmationDialog';
-import { buttonCaptions, defaultLLM, largeFileSize, llms, taskParam, tooltips } from '../utils/Constants';
+import { buttonCaptions, defaultLLM, largeFileSize, llms, tooltips } from '../utils/Constants';
 import ButtonWithToolTip from './UI/ButtonWithToolTip';
 import connectAPI from '../services/ConnectAPI';
-import SettingModalHOC from '../HOC/SettingModalHOC';
 import DropdownComponent from './Dropdown';
 import GraphViewModal from './Graph/GraphViewModal';
-import GraphEnhancementDialog from './Popups/GraphEnhancementDialog';
 import { OverridableStringUnion } from '@mui/types';
 import { AlertColor, AlertPropsColorOverrides } from '@mui/material';
+import { lazy } from 'react';
+import FallBackDialog from './UI/FallBackDialog';
+import DeletePopUp from './Popups/DeletePopUp/DeletePopUp';
+import GraphEnhancementDialog from './Popups/GraphEnhancementDialog';
+import { tokens } from '@neo4j-ndl/base';
+const ConnectionModal = lazy(() => import('./Popups/ConnectionModal/ConnectionModal'));
+const ConfirmationDialog = lazy(() => import('./Popups/LargeFilePopUp/ConfirmationDialog'));
 
 const Content: React.FC<ContentProps> = ({
   isLeftExpanded,
   isRightExpanded,
-  openTextSchema,
   isSchema,
   setIsSchema,
   showEnhancementDialog,
-  setshowEnhancementDialog,
-  closeSettingModal
+  toggleEnhancementDialog,
+  closeSettingModal,
 }) => {
+  const { breakpoints } = tokens;
+  const isTablet = useMediaQuery(`(min-width:${breakpoints.xs}) and (max-width: ${breakpoints.lg})`);
   const [init, setInit] = useState<boolean>(false);
-  const [openConnection, setOpenConnection] = useState<boolean>(false);
+  const [openConnection, setOpenConnection] = useState<connectionState>({
+    isvectorIndexMatch: true,
+    openPopUp: false,
+    novectorindexInDB: true,
+  });
   const [openGraphView, setOpenGraphView] = useState<boolean>(false);
   const [inspectedName, setInspectedName] = useState<string>('');
   const [connectionStatus, setConnectionStatus] = useState<boolean>(false);
   const { setUserCredentials, userCredentials } = useCredentials();
   const [showConfirmationModal, setshowConfirmationModal] = useState<boolean>(false);
   const [extractLoading, setextractLoading] = useState<boolean>(false);
-  const [isLargeFile, setIsLargeFile] = useState<boolean>(false);
-  const [showSettingnModal, setshowSettingModal] = useState<boolean>(false);
 
   const {
     filesData,
@@ -55,6 +68,7 @@ const Content: React.FC<ContentProps> = ({
     setSelectedNodes,
     setRowSelection,
     setSelectedRels,
+    postProcessingTasks,
   } = useFileContext();
   const [viewPoint, setViewPoint] = useState<'tableView' | 'showGraphView' | 'chatInfoView'>('tableView');
   const [showDeletePopUp, setshowDeletePopUp] = useState<boolean>(false);
@@ -83,12 +97,6 @@ const Content: React.FC<ContentProps> = ({
     }
   );
   const childRef = useRef<ChildRef>(null);
-  const openGraphEnhancementDialog = () => {
-    setshowEnhancementDialog(true);
-  };
-  const closeGraphEnhancementDialog = () => {
-    setshowEnhancementDialog(false);
-  };
   const showAlert = (
     alertmsg: string,
     alerttype: OverridableStringUnion<AlertColor, AlertPropsColorOverrides> | undefined
@@ -112,11 +120,11 @@ const Content: React.FC<ContentProps> = ({
           port: neo4jConnection.uri.split(':')[2],
         });
       } else {
-        setOpenConnection(true);
+        setOpenConnection((prev) => ({ ...prev, openPopUp: true }));
       }
       setInit(true);
     } else {
-      setOpenConnection(true);
+      setOpenConnection((prev) => ({ ...prev, openPopUp: true }));
     }
   }, []);
 
@@ -250,7 +258,6 @@ const Content: React.FC<ContentProps> = ({
   };
 
   const handleGenerateGraph = (allowLargeFiles: boolean, selectedFilesFromAllfiles: CustomFile[]) => {
-    setIsLargeFile(false);
     const data = [];
     if (selectedfileslength && allowLargeFiles) {
       for (let i = 0; i < selectedfileslength; i++) {
@@ -261,7 +268,7 @@ const Content: React.FC<ContentProps> = ({
       }
       Promise.allSettled(data).then(async (_) => {
         setextractLoading(false);
-        await postProcessing(userCredentials as UserCredentials, taskParam);
+        await postProcessing(userCredentials as UserCredentials, postProcessingTasks);
       });
     } else if (selectedFilesFromAllfiles.length && allowLargeFiles) {
       // @ts-ignore
@@ -272,17 +279,13 @@ const Content: React.FC<ContentProps> = ({
       }
       Promise.allSettled(data).then(async (_) => {
         setextractLoading(false);
-        await postProcessing(userCredentials as UserCredentials, taskParam);
+        await postProcessing(userCredentials as UserCredentials, postProcessingTasks);
       });
     }
   };
 
   const handleClose = () => {
-    setalertDetails({
-      showAlert: false,
-      alertType: 'info',
-      alertMessage: '',
-    });
+    setalertDetails((prev) => ({ ...prev, showAlert: false, alertMessage: '' }));
   };
 
   const handleOpenGraphClick = () => {
@@ -344,14 +347,6 @@ const Content: React.FC<ContentProps> = ({
     () => (selectedfileslength ? completedfileNo === 0 : true),
     [selectedfileslength, completedfileNo]
   );
-
-  // const processingCheck = () => {
-  //   const processingFiles = filesData.some((file) => file.status === 'Processing');
-  //   const selectedRowProcessing = childRef.current?.getSelectedRows().some((row) =>
-  //     filesData.some((file) => file.name === row && file.status === 'Processing')
-  //   );
-  //   return processingFiles || selectedRowProcessing;
-  // };
 
   const filesForProcessing = useMemo(() => {
     let newstatusfiles: CustomFile[] = [];
@@ -416,10 +411,26 @@ const Content: React.FC<ContentProps> = ({
         console.log(parsedData.uri);
         const response = await connectAPI(parsedData.uri, parsedData.user, parsedData.password, parsedData.database);
         if (response?.data?.status === 'Success') {
-          setConnectionStatus(true);
-          setOpenConnection(false);
+          localStorage.setItem(
+            'neo4j.connection',
+            JSON.stringify({
+              ...parsedData,
+              userDbVectorIndex: response.data.data.db_vector_dimension,
+            })
+          );
+          if (response.data.data.application_dimension === response.data.data.db_vector_dimension) {
+            setConnectionStatus(true);
+            setOpenConnection((prev) => ({ ...prev, openPopUp: false }));
+          } else {
+            setOpenConnection({
+              isvectorIndexMatch: false,
+              openPopUp: true,
+              novectorindexInDB: response.data.data.db_vector_dimension === 0,
+            });
+            setConnectionStatus(false);
+          }
         } else {
-          setOpenConnection(true);
+          setOpenConnection((prev) => ({ ...prev, openPopUp: true }));
           setConnectionStatus(false);
         }
       })();
@@ -434,109 +445,46 @@ const Content: React.FC<ContentProps> = ({
   }, [isSchema]);
 
   const onClickHandler = () => {
-    if (isSchema) {
-      if (childRef.current?.getSelectedRows().length) {
-        let selectedLargeFiles: CustomFile[] = [];
-        childRef.current?.getSelectedRows().forEach((f) => {
-          const parsedData: CustomFile = f;
-          if (parsedData.fileSource === 'local file') {
-            if (typeof parsedData.size === 'number' && parsedData.status === 'New' && parsedData.size > largeFileSize) {
-              selectedLargeFiles.push(parsedData);
-            }
+    if (childRef.current?.getSelectedRows().length) {
+      let selectedLargeFiles: CustomFile[] = [];
+      childRef.current?.getSelectedRows().forEach((f) => {
+        const parsedData: CustomFile = f;
+        if (parsedData.fileSource === 'local file') {
+          if (typeof parsedData.size === 'number' && parsedData.status === 'New' && parsedData.size > largeFileSize) {
+            selectedLargeFiles.push(parsedData);
           }
-        });
-        // @ts-ignore
-        if (selectedLargeFiles.length) {
-          setIsLargeFile(true);
-          setshowConfirmationModal(true);
-          handleGenerateGraph(false, []);
-        } else {
-          setIsLargeFile(false);
-          handleGenerateGraph(true, filesData);
         }
-      } else if (filesData.length) {
-        const largefiles = filesData.filter((f) => {
-          if (typeof f.size === 'number' && f.status === 'New' && f.size > largeFileSize) {
-            return true;
-          }
-          return false;
-        });
-        const selectAllNewFiles = filesData.filter((f) => f.status === 'New');
-        const stringified = selectAllNewFiles.reduce((accu, f) => {
-          const key = f.id;
-          // @ts-ignore
-          accu[key] = true;
-          return accu;
-        }, {});
-        setRowSelection(stringified);
-        if (largefiles.length) {
-          setIsLargeFile(true);
-          setshowConfirmationModal(true);
-          handleGenerateGraph(false, []);
-        } else {
-          setIsLargeFile(false);
-          handleGenerateGraph(true, filesData);
-        }
+      });
+      if (selectedLargeFiles.length) {
+        setshowConfirmationModal(true);
+        handleGenerateGraph(false, []);
+      } else {
+        handleGenerateGraph(true, filesData);
       }
-    } else {
-      if (childRef.current?.getSelectedRows().length) {
-        let selectedLargeFiles: CustomFile[] = [];
-        childRef.current?.getSelectedRows().forEach((f) => {
-          const parsedData: CustomFile = f;
-          if (parsedData.fileSource === 'local file') {
-            if (typeof parsedData.size === 'number' && parsedData.status === 'New' && parsedData.size > largeFileSize) {
-              selectedLargeFiles.push(parsedData);
-            }
-          }
-        });
+    } else if (filesData.length) {
+      const largefiles = filesData.filter((f) => {
+        if (typeof f.size === 'number' && f.status === 'New' && f.size > largeFileSize) {
+          return true;
+        }
+        return false;
+      });
+      const selectAllNewFiles = filesData.filter((f) => f.status === 'New');
+      const stringified = selectAllNewFiles.reduce((accu, f) => {
+        const key = f.id;
         // @ts-ignore
-        if (selectedLargeFiles.length) {
-          setIsLargeFile(true);
-        } else {
-          setIsLargeFile(false);
-        }
-      } else if (filesData.length) {
-        const largefiles = filesData.filter((f) => {
-          if (typeof f.size === 'number' && f.status === 'New' && f.size > largeFileSize) {
-            return true;
-          }
-          return false;
-        });
-        const selectAllNewFiles = filesData.filter((f) => f.status === 'New');
-        const stringified = selectAllNewFiles.reduce((accu, f) => {
-          const key = f.id;
-          // @ts-ignore
-          accu[key] = true;
-          return accu;
-        }, {});
-        setRowSelection(stringified);
-        if (largefiles.length) {
-          setIsLargeFile(true);
-        } else {
-          setIsLargeFile(false);
-        }
+        accu[key] = true;
+        return accu;
+      }, {});
+      setRowSelection(stringified);
+      if (largefiles.length) {
+        setshowConfirmationModal(true);
+        handleGenerateGraph(false, []);
+      } else {
+        handleGenerateGraph(true, filesData);
       }
-      setshowSettingModal(true);
     }
   };
 
-  const handleContinue = () => {
-    if (!isLargeFile) {
-      handleGenerateGraph(true, filesData);
-      setshowSettingModal(false);
-    } else {
-      setshowSettingModal(false);
-      setshowConfirmationModal(true);
-      handleGenerateGraph(false, []);
-    }
-    setIsSchema(true);
-    setalertDetails({
-      showAlert: true,
-      alertType: 'success',
-      alertMessage: 'Schema is set successfully',
-    });
-    localStorage.setItem('isSchema', JSON.stringify(true));
-  };
   return (
     <>
       {alertDetails.showAlert && (
@@ -556,13 +504,15 @@ const Content: React.FC<ContentProps> = ({
         />
       )}
       {showConfirmationModal && filesForProcessing.length && (
-        <ConfirmationDialog
-          open={showConfirmationModal}
-          largeFiles={filesForProcessing}
-          extractHandler={handleGenerateGraph}
-          onClose={() => setshowConfirmationModal(false)}
-          loading={extractLoading}
-        ></ConfirmationDialog>
+        <Suspense fallback={<FallBackDialog />}>
+          <ConfirmationDialog
+            open={showConfirmationModal}
+            largeFiles={filesForProcessing}
+            extractHandler={handleGenerateGraph}
+            onClose={() => setshowConfirmationModal(false)}
+            loading={extractLoading}
+          ></ConfirmationDialog>
+        </Suspense>
       )}
       {showDeletePopUp && (
         <DeletePopUp
@@ -574,32 +524,26 @@ const Content: React.FC<ContentProps> = ({
           view='contentView'
         ></DeletePopUp>
       )}
-      {showSettingnModal && (
-        <SettingModalHOC
-          settingView='contentView'
-          onClose={() => setshowSettingModal(false)}
-          onContinue={handleContinue}
-          open={showSettingnModal}
-          openTextSchema={openTextSchema}
-          isSchema={isSchema}
-          setIsSchema={setIsSchema}
-        />
-      )}
       {showEnhancementDialog && (
         <GraphEnhancementDialog
           open={showEnhancementDialog}
-          onClose={closeGraphEnhancementDialog}
+          onClose={toggleEnhancementDialog}
           closeSettingModal={closeSettingModal}
           showAlert={showAlert}
         ></GraphEnhancementDialog>
       )}
       <div className={`n-bg-palette-neutral-bg-default ${classNameCheck}`}>
-        <Flex className='w-full' alignItems='center' justifyContent='space-between' flexDirection='row'>
-          <ConnectionModal
-            open={openConnection}
-            setOpenConnection={setOpenConnection}
-            setConnectionStatus={setConnectionStatus}
-          />
+        <Flex className='w-full' alignItems='center' justifyContent='space-between' flexDirection='row' flexWrap='wrap'>
+          <Suspense fallback={<FallBackDialog />}>
+            <ConnectionModal
+              open={openConnection.openPopUp}
+              setOpenConnection={setOpenConnection}
+              setConnectionStatus={setConnectionStatus}
+              isVectorIndexMatch={openConnection.isvectorIndexMatch}
+              noVectorIndexFound={openConnection.novectorindexInDB}
+            />
+          </Suspense>
+
           <div className='connectionstatus__container'>
             <span className='h6 px-1'>Neo4j connection</span>
             <Typography variant='body-medium'>
@@ -631,15 +575,27 @@ const Content: React.FC<ContentProps> = ({
             </Typography>
           </div>
           <div>
-            <Button className='mr-2.5' onClick={openGraphEnhancementDialog} disabled={!connectionStatus}>
+            <ButtonWithToolTip
+              placement='top'
+              text='Configure Graph Schema, Delete disconnected Entities, Merge duplicate Entities'
+              label='Graph Enhancemnet Settings'
+              className='mr-2.5'
+              onClick={toggleEnhancementDialog}
+              disabled={!connectionStatus}
+              size={isTablet ? 'small' : 'medium'}
+            >
               Graph Enhancement
-            </Button>
+            </ButtonWithToolTip>
             {!connectionStatus ? (
-              <Button className='mr-2.5' onClick={() => setOpenConnection(true)}>
+              <Button
+                size={isTablet ? 'small' : 'medium'}
+                className='mr-2.5'
+                onClick={() => setOpenConnection((prev) => ({ ...prev, openPopUp: true }))}
+              >
                 {buttonCaptions.connectToNeo4j}
               </Button>
             ) : (
-              <Button className='mr-2.5' onClick={disconnect}>
+              <Button size={isTablet ? 'small' : 'medium'} className='mr-2.5' onClick={disconnect}>
                 {buttonCaptions.disconnect}
               </Button>
             )}
@@ -661,7 +617,7 @@ const Content: React.FC<ContentProps> = ({
             !isLeftExpanded && !isRightExpanded ? 'w-[calc(100%-128px)]' : 'w-full'
           } p-2.5 absolute bottom-4 mt-1.5 self-start`}
           justifyContent='space-between'
-          flexDirection='row'
+          flexDirection={isTablet ? 'column' : 'row'}
         >
           <DropdownComponent
             onSelect={handleDropdownChange}
@@ -671,7 +627,7 @@ const Content: React.FC<ContentProps> = ({
             view='ContentView'
             isDisabled={false}
           />
-          <Flex flexDirection='row' gap='4' className='self-end'>
+          <Flex flexDirection='row' gap='4' className='self-end' flexWrap='wrap'>
             <ButtonWithToolTip
               text={tooltips.generateGraph}
               placement='top'
@@ -679,6 +635,7 @@ const Content: React.FC<ContentProps> = ({
               onClick={onClickHandler}
               disabled={disableCheck}
               className='mr-0.5'
+              size={isTablet ? 'small' : 'medium'}
             >
               {buttonCaptions.generateGraph}{' '}
               {selectedfileslength && !disableCheck && newFilecheck ? `(${newFilecheck})` : ''}
@@ -690,6 +647,7 @@ const Content: React.FC<ContentProps> = ({
               disabled={showGraphCheck}
               className='mr-0.5'
               label='show graph'
+              size={isTablet ? 'small' : 'medium'}
             >
               {buttonCaptions.showPreviewGraph} {selectedfileslength && completedfileNo ? `(${completedfileNo})` : ''}
             </ButtonWithToolTip>
@@ -700,6 +658,7 @@ const Content: React.FC<ContentProps> = ({
               disabled={!filesData.some((f) => f?.status === 'Completed')}
               className='ml-0.5'
               label='Open Graph with Bloom'
+              size={isTablet ? 'small' : 'medium'}
             >
               {buttonCaptions.exploreGraphWithBloom}
             </ButtonWithToolTip>
@@ -712,6 +671,7 @@ const Content: React.FC<ContentProps> = ({
               disabled={!selectedfileslength}
               className='ml-0.5'
               label='Delete Files'
+              size={isTablet ? 'small' : 'medium'}
             >
               {buttonCaptions.deleteFiles}
               {selectedfileslength != undefined && selectedfileslength > 0 && `(${selectedfileslength})`}

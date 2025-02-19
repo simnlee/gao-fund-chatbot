@@ -25,20 +25,7 @@ def generate_graphDocuments(model: str, graph: Neo4jGraph, chunkId_chunkDoc_list
     logging.info(f"allowedNodes: {allowedNodes}, allowedRelationship: {allowedRelationship}")
 
     graph_documents = []
-    if model == "diffbot":
-        graph_documents = get_graph_from_diffbot(graph, chunkId_chunkDoc_list)
-
-    elif model in OPENAI_MODELS:
-        graph_documents = get_graph_from_OpenAI(model, graph, chunkId_chunkDoc_list, allowedNodes, allowedRelationship)
-
-    elif model in GEMINI_MODELS:
-        graph_documents = get_graph_from_Gemini(model, graph, chunkId_chunkDoc_list, allowedNodes, allowedRelationship)
-
-    # elif model in GROQ_MODELS :
-    #     graph_documents = get_graph_from_Groq_Llama3(MODEL_VERSIONS[model], graph, chunkId_chunkDoc_list, allowedNodes, allowedRelationship)
-    
-    else : 
-        graph_documents = get_graph_from_llm(model,chunkId_chunkDoc_list, allowedNodes, allowedRelationship) 
+    graph_documents = get_graph_from_OpenAI(model, graph, chunkId_chunkDoc_list, allowedNodes, allowedRelationship)
 
     logging.info(f"graph_documents = {len(graph_documents)}")
     return graph_documents

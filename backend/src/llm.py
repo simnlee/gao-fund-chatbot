@@ -135,10 +135,8 @@ def get_graph_document_list(
 ):
     futures = []
     graph_document_list = []
-    if llm.get_name() == "ChatOllama":
-        node_properties = False
-    else:
-        node_properties = ["description"]
+    node_properties = ["description"]
+    
     llm_transformer = LLMGraphTransformer(
         llm=llm,
         node_properties=node_properties,

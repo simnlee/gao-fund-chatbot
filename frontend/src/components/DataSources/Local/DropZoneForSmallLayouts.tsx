@@ -1,81 +1,26 @@
-import { Dropzone, Flex, Typography } from '@neo4j-ndl/react';
-import React, { useState, useEffect, FunctionComponent } from 'react';
-import Loader from '../../../utils/Loader';
-import { v4 as uuidv4 } from 'uuid';
-import { useCredentials } from '../../../context/UserCredentials';
+import { CloudArrowUpIconSolid } from '@neo4j-ndl/react/icons';
+import { useDropzone } from 'react-dropzone';
 import { useFileContext } from '../../../context/UsersFiles';
-import CustomAlert from '../../UI/Alert';
-import { CustomFile, CustomFileBase, UserCredentials, alertStateType } from '../../../types';
-import { buttonCaptions, chunkSize } from '../../../utils/Constants';
-import { InformationCircleIconOutline } from '@neo4j-ndl/react/icons';
-import IconButtonWithToolTip from '../../UI/IconButtonToolTip';
+import { useEffect, useState } from 'react';
+import { useCredentials } from '../../../context/UserCredentials';
+import { alertStateType, CustomFile, CustomFileBase, UserCredentials } from '../../../types';
+import { chunkSize } from '../../../utils/Constants';
 import { uploadAPI } from '../../../utils/FileAPI';
+import CustomAlert from '../../UI/Alert';
+import { v4 as uuidv4 } from 'uuid';
+import { LoadingSpinner } from '@neo4j-ndl/react';
 
-const DropZone: FunctionComponent = () => {
+export default function DropZoneForSmallLayouts() {
   const { filesData, setFilesData, model } = useFileContext();
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isClicked, setIsClicked] = useState<boolean>(false);
   const { userCredentials } = useCredentials();
-  const [alertDetails, setalertDetails] = React.useState<alertStateType>({
+  const [alertDetails, setalertDetails] = useState<alertStateType>({
     showAlert: false,
     alertType: 'error',
     alertMessage: '',
   });
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-
-  const onDropHandler = (f: Partial<globalThis.File>[]) => {
-    setIsClicked(true);
-    setSelectedFiles(f.map((f) => f as File));
-    setIsLoading(false);
-    if (f.length) {
-      const defaultValues: CustomFileBase = {
-        processing: 0,
-        status: 'None',
-        NodesCount: 0,
-        relationshipCount: 0,
-        model: model,
-        fileSource: 'local file',
-        uploadprogess: 0,
-        processingProgress: undefined,
-      };
-
-      const copiedFilesData: CustomFile[] = [...filesData];
-
-      f.forEach((file) => {
-        const filedataIndex = copiedFilesData.findIndex((filedataitem) => filedataitem?.name === file?.name);
-        if (filedataIndex == -1) {
-          copiedFilesData.unshift({
-            name: file.name,
-            // @ts-ignore
-            type: `${file.name.substring(file.name.lastIndexOf('.') + 1, file.name.length).toUpperCase()}`,
-            size: file.size,
-            uploadprogess: file.size && file?.size < chunkSize ? 100 : 0,
-            id: uuidv4(),
-            ...defaultValues,
-          });
-        } else {
-          const tempFileData = copiedFilesData[filedataIndex];
-          copiedFilesData.splice(filedataIndex, 1);
-          copiedFilesData.unshift({
-            ...tempFileData,
-            status: defaultValues.status,
-            NodesCount: defaultValues.NodesCount,
-            relationshipCount: defaultValues.relationshipCount,
-            processing: defaultValues.processing,
-            model: defaultValues.model,
-            fileSource: defaultValues.fileSource,
-            processingProgress: defaultValues.processingProgress,
-          });
-        }
-      });
-      setFilesData(copiedFilesData);
-    }
-  };
-
-  const handleClose = () => {
-    setalertDetails((prev) => ({ ...prev, showAlert: false, alertMessage: '' }));
-  };
-
   useEffect(() => {
     if (selectedFiles.length > 0) {
       selectedFiles.forEach((file, uid) => {
@@ -85,6 +30,9 @@ const DropZone: FunctionComponent = () => {
       });
     }
   }, [selectedFiles]);
+  const handleClose = () => {
+    setalertDetails((prev) => ({ ...prev, showAlert: false, alertMessage: '' }));
+  };
   const uploadFileInChunks = (file: File) => {
     const totalChunks = Math.ceil(file.size / chunkSize);
     const chunkProgressIncrement = 100 / totalChunks;
@@ -205,7 +153,81 @@ const DropZone: FunctionComponent = () => {
 
     uploadNextChunk();
   };
+  const { acceptedFiles, getRootProps, getInputProps } = useDropzone({
+    accept: {
+      'application/pdf': ['.pdf'],
+      'image/*': ['.jpeg', '.jpg', '.png', '.svg'],
+      'text/html': ['.html'],
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+      'text/plain': ['.txt'],
+      'application/vnd.ms-powerpoint': ['.pptx'],
+      'application/vnd.ms-excel': ['.xls'],
+      'text/markdown': ['.md'],
+    },
+    onDrop: (f: Partial<globalThis.File>[]) => {
+      onDropHandler(f);
+    },
+    onDropRejected: (e) => {
+      if (e.length) {
+        setalertDetails({
+          showAlert: true,
+          alertType: 'error',
+          alertMessage: 'Failed To Upload, Unsupported file extention',
+        });
+      }
+    },
+    disabled: isLoading,
+  });
 
+  const onDropHandler = (f: Partial<globalThis.File>[]) => {
+    setIsClicked(true);
+    setSelectedFiles(f.map((f) => f as File));
+    setIsLoading(false);
+    if (f.length) {
+      const defaultValues: CustomFileBase = {
+        processing: 0,
+        status: 'None',
+        NodesCount: 0,
+        relationshipCount: 0,
+        model: model,
+        fileSource: 'local file',
+        uploadprogess: 0,
+        processingProgress: undefined,
+      };
+
+      const copiedFilesData: CustomFile[] = [...filesData];
+
+      f.forEach((file) => {
+        const filedataIndex = copiedFilesData.findIndex((filedataitem) => filedataitem?.name === file?.name);
+        if (filedataIndex == -1) {
+          copiedFilesData.unshift({
+            name: file.name,
+            // @ts-ignore
+            type: `${file.name.substring(file.name.lastIndexOf('.') + 1, file.name.length).toUpperCase()}`,
+            size: file.size,
+            uploadprogess: file.size && file?.size < chunkSize ? 100 : 0,
+            id: uuidv4(),
+            ...defaultValues,
+          });
+        } else {
+          const tempFileData = copiedFilesData[filedataIndex];
+          copiedFilesData.splice(filedataIndex, 1);
+          copiedFilesData.unshift({
+            ...tempFileData,
+            status: defaultValues.status,
+            NodesCount: defaultValues.NodesCount,
+            relationshipCount: defaultValues.relationshipCount,
+            processing: defaultValues.processing,
+            model: defaultValues.model,
+            fileSource: defaultValues.fileSource,
+            processingProgress: defaultValues.processingProgress,
+          });
+        }
+      });
+      setFilesData(copiedFilesData);
+    }
+  };
+  console.log(acceptedFiles);
   return (
     <>
       {alertDetails.showAlert && (
@@ -216,63 +238,10 @@ const DropZone: FunctionComponent = () => {
           alertMessage={alertDetails.alertMessage}
         />
       )}
-
-      <Dropzone
-        loadingComponent={isLoading && <Loader title='Uploading' />}
-        isTesting={true}
-        className='!bg-none dropzoneContainer'
-        supportedFilesDescription={
-          <Typography variant='body-small'>
-            <Flex>
-              <span>{buttonCaptions.dropzoneSpan}</span>
-              <div className='align-self-center'>
-                <IconButtonWithToolTip
-                  label='Source info'
-                  clean
-                  text={
-                    <Typography variant='body-small'>
-                      <Flex gap='3' alignItems='flex-start'>
-                        <span>Microsoft Office (.docx, .pptx, .xls)</span>
-                        <span>PDF (.pdf)</span>
-                        <span>Images (.jpeg, .jpg, .png, .svg)</span>
-                        <span>Text (.html, .txt , .md)</span>
-                      </Flex>
-                    </Typography>
-                  }
-                >
-                  <InformationCircleIconOutline className='w-[22px] h-[22px]' />
-                </IconButtonWithToolTip>
-              </div>
-            </Flex>
-          </Typography>
-        }
-        dropZoneOptions={{
-          accept: {
-            'application/pdf': ['.pdf'],
-            'image/*': ['.jpeg', '.jpg', '.png', '.svg'],
-            'text/html': ['.html'],
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-            'text/plain': ['.txt'],
-            'application/vnd.ms-powerpoint': ['.pptx'],
-            'application/vnd.ms-excel': ['.xls'],
-            'text/markdown': ['.md'],
-          },
-          onDrop: (f: Partial<globalThis.File>[]) => {
-            onDropHandler(f);
-          },
-          onDropRejected: (e) => {
-            if (e.length) {
-              setalertDetails({
-                showAlert: true,
-                alertType: 'error',
-                alertMessage: 'Failed To Upload, Unsupported file extention',
-              });
-            }
-          },
-        }}
-      />
+      <div {...getRootProps({ className: 'dropzone' })}>
+        <input {...getInputProps()} />
+        {isLoading ? <LoadingSpinner size='medium' /> : <CloudArrowUpIconSolid />}
+      </div>
     </>
   );
-};
-
-export default DropZone;
+}

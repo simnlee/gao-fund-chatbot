@@ -1,12 +1,7 @@
-import { Checkbox, DataGrid, DataGridComponents, Flex, Typography, useMediaQuery } from '@neo4j-ndl/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { UserCredentials, orphanNodeProps } from '../../../../types';
-import { getOrphanNodes } from '../../../../services/GetOrphanNodes';
+import { getDuplicateNodes } from '../../../../services/GetDuplicateNodes';
 import { useCredentials } from '../../../../context/UserCredentials';
-import Legend from '../../../UI/Legend';
-import { calcWordColor } from '@neo4j-devtools/word-color';
-import { DocumentIconOutline } from '@neo4j-ndl/react/icons';
-import ButtonWithToolTip from '../../../UI/ButtonWithToolTip';
+import { dupNodes, selectedDuplicateNodes, UserCredentials } from '../../../../types';
 import {
   useReactTable,
   getCoreRowModel,
@@ -17,60 +12,88 @@ import {
   Row,
   getSortedRowModel,
 } from '@tanstack/react-table';
-import DeletePopUp from '../../DeletePopUp/DeletePopUp';
+import { Checkbox, DataGrid, DataGridComponents, Flex, Tag, Typography, useMediaQuery } from '@neo4j-ndl/react';
+import Legend from '../../../UI/Legend';
+import { DocumentIconOutline } from '@neo4j-ndl/react/icons';
+import { calcWordColor } from '@neo4j-devtools/word-color';
+import ButtonWithToolTip from '../../../UI/ButtonWithToolTip';
+import mergeDuplicateNodes from '../../../../services/MergeDuplicateEntities';
 import { tokens } from '@neo4j-ndl/base';
-export default function DeletePopUpForOrphanNodes({
-  deleteHandler,
-  loading,
-}: {
-  deleteHandler: (selectedEntities: string[]) => Promise<void>;
-  loading: boolean;
-}) {
+
+export default function DeduplicationTab() {
   const { breakpoints } = tokens;
   const isTablet = useMediaQuery(`(min-width:${breakpoints.xs}) and (max-width: ${breakpoints.lg})`);
-  const [orphanNodes, setOrphanNodes] = useState<orphanNodeProps[]>([]);
-  const [totalOrphanNodes, setTotalOrphanNodes] = useState<number>(0);
-  const [isLoading, setLoading] = useState<boolean>(false);
+  const isSmallDesktop = useMediaQuery(`(min-width: ${breakpoints.lg})`);
   const { userCredentials } = useCredentials();
+  const [duplicateNodes, setDuplicateNodes] = useState<dupNodes[]>([]);
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
+  const [isLoading, setLoading] = useState<boolean>(false);
+  const [mergeAPIloading, setmergeAPIloading] = useState<boolean>(false);
   const tableRef = useRef(null);
-  const [showDeletePopUp, setshowDeletePopUp] = useState<boolean>(false);
-
-  const fetchOrphanNodes = useCallback(async () => {
+  const fetchDuplicateNodes = useCallback(async () => {
     try {
       setLoading(true);
-      const apiresponse = await getOrphanNodes(userCredentials as UserCredentials);
+      const duplicateNodesData = await getDuplicateNodes(userCredentials as UserCredentials);
       setLoading(false);
-      if (apiresponse.data.data.length) {
-        setOrphanNodes(apiresponse.data.data);
-        setTotalOrphanNodes(
-          apiresponse.data.message != undefined && typeof apiresponse.data.message != 'string'
-            ? apiresponse.data.message.total
-            : 0
-        );
+      if (duplicateNodesData.data.status === 'Failed') {
+        throw new Error(duplicateNodesData.data.error);
+      }
+      if (duplicateNodesData.data.data.length) {
+        setDuplicateNodes(duplicateNodesData.data.data);
+      } else {
+        setDuplicateNodes([]);
       }
     } catch (error) {
       setLoading(false);
       console.log(error);
     }
   }, [userCredentials]);
-
   useEffect(() => {
     (async () => {
-      await fetchOrphanNodes();
+      await fetchDuplicateNodes();
     })();
-    return () => {
-      setOrphanNodes([]);
-      setTotalOrphanNodes(0);
-    };
   }, [userCredentials]);
-  const columnHelper = createColumnHelper<orphanNodeProps>();
 
+  const clickHandler = async () => {
+    try {
+      const selectedNodeMap = table.getSelectedRowModel().rows.map(
+        (r): selectedDuplicateNodes => ({
+          firstElementId: r.id,
+          similarElementIds: r.original.similar.map((s) => s.elementId),
+        })
+      );
+      setmergeAPIloading(true);
+      const response = await mergeDuplicateNodes(userCredentials as UserCredentials, selectedNodeMap);
+      table.resetRowSelection();
+      table.resetPagination();
+      setmergeAPIloading(false);
+      if (response.data.status === 'Failed') {
+        throw new Error(response.data.error);
+      }
+    } catch (error) {
+      setmergeAPIloading(false);
+      console.log(error);
+    }
+  };
+
+  const columnHelper = createColumnHelper<dupNodes>();
+  const onRemove = (nodeid: string, similarNodeId: string) => {
+    setDuplicateNodes((prev) => {
+      return prev.map((d) =>
+        (d.e.elementId === nodeid
+          ? {
+              ...d,
+              similar: d.similar.filter((n) => n.elementId != similarNodeId),
+            }
+          : d)
+      );
+    });
+  };
   const columns = useMemo(
     () => [
       {
         id: 'Check to Delete All Files',
-        header: ({ table }: { table: Table<orphanNodeProps> }) => {
+        header: ({ table }: { table: Table<dupNodes> }) => {
           return (
             <Checkbox
               aria-label='header-checkbox'
@@ -79,13 +102,13 @@ export default function DeletePopUpForOrphanNodes({
             />
           );
         },
-        cell: ({ row }: { row: Row<orphanNodeProps> }) => {
+        cell: ({ row }: { row: Row<dupNodes> }) => {
           return (
             <div className='px-1'>
               <Checkbox
                 aria-label='row-checkbox'
                 onChange={row.getToggleSelectedHandler()}
-                title='Select the Row for Deletion'
+                title='Select the Row for merging'
                 checked={row.getIsSelected()}
               />
             </div>
@@ -104,6 +127,32 @@ export default function DeletePopUpForOrphanNodes({
         },
         header: () => <span>ID</span>,
         footer: (info) => info.column.id,
+      }),
+      columnHelper.accessor((row) => row.similar, {
+        id: 'Similar Nodes',
+        cell: (info) => {
+          return (
+            <Flex>
+              {info.getValue().map((s, index) => (
+                <Tag
+                  style={{
+                    backgroundColor: `${calcWordColor(s.id)}`,
+                  }}
+                  key={`${s.elementId}${index}`}
+                  onRemove={() => {
+                    onRemove(info.row.original.e.elementId, s.elementId);
+                  }}
+                  removeable={true}
+                  type='default'
+                  size={isTablet ? 'small' : 'medium'}
+                >
+                  {s.id}
+                </Tag>
+              ))}
+            </Flex>
+          );
+        },
+        size: isTablet || isSmallDesktop ? 250 : 150,
       }),
       columnHelper.accessor((row) => row.e.labels, {
         id: 'Labels',
@@ -148,7 +197,7 @@ export default function DeletePopUpForOrphanNodes({
     []
   );
   const table = useReactTable({
-    data: orphanNodes,
+    data: duplicateNodes,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -170,58 +219,29 @@ export default function DeletePopUpForOrphanNodes({
       },
     },
   });
-
-  const selectedFilesCheck = table.getSelectedRowModel().rows.length
-    ? `Delete Selected Nodes (${table.getSelectedRowModel().rows.length})`
-    : 'Select Node(s) to delete';
-
-  const onDeleteHandler = async () => {
-    await deleteHandler(table.getSelectedRowModel().rows.map((r) => r.id));
-    const selectedRows = table.getSelectedRowModel().rows.map((r) => r.id);
-    setTotalOrphanNodes((prev) => prev - selectedRows.length);
-    selectedRows.forEach((eid: string) => {
-      setOrphanNodes((prev) => prev.filter((node) => node.e.elementId != eid));
-    });
-    setshowDeletePopUp(false);
-    if (totalOrphanNodes) {
-      await fetchOrphanNodes();
-    }
-  };
-
+  const selectedFilesCheck = mergeAPIloading
+    ? 'Merging...'
+    : table.getSelectedRowModel().rows.length
+    ? `Merge Duplicate Nodes (${table.getSelectedRowModel().rows.length})`
+    : 'Select Node(s) to Merge';
   return (
     <div>
-      {showDeletePopUp && (
-        <DeletePopUp
-          open={showDeletePopUp}
-          no_of_files={table.getSelectedRowModel().rows.length ?? 0}
-          deleteHandler={onDeleteHandler}
-          deleteCloseHandler={() => setshowDeletePopUp(false)}
-          loading={loading}
-          view='settingsView'
-        />
-      )}
-      <div>
-        <Flex flexDirection='column'>
-          <Flex justifyContent='space-between' flexDirection='row'>
-            <Typography variant={isTablet ? 'subheading-medium' : 'subheading-large'}>
-              Orphan Nodes Deletion (100 nodes per batch)
-            </Typography>
-            {totalOrphanNodes > 0 && (
-              <Typography variant={isTablet ? 'subheading-medium' : 'subheading-large'}>
-                Total Nodes: {totalOrphanNodes}
-              </Typography>
-            )}
-          </Flex>
-          <Flex justifyContent='space-between' flexDirection='row'>
-            <Typography variant={isTablet ? 'body-small' : 'body-medium'}>
-              This feature helps improve the accuracy of your knowledge graph by identifying and removing entities that
-              are not connected to any other information. These "lonely" entities can be remnants of past analyses or
-              errors in data processing. By removing them, we can create a cleaner and more efficient knowledge graph
-              that leads to more relevant and informative responses.
-            </Typography>
-          </Flex>
+      <Flex justifyContent='space-between' flexDirection='row'>
+        <Flex>
+          <Typography variant={isTablet ? 'subheading-medium' : 'subheading-large'}>
+            Refine Your Knowledge Graph: Merge Duplicate Entities:
+          </Typography>
+          <Typography variant={isTablet ? 'body-small' : 'subheading-large'}>
+            Identify and merge similar entries like "Apple" and "Apple Inc." to eliminate redundancy and improve the
+            accuracy and clarity of your knowledge graph.
+          </Typography>
         </Flex>
-      </div>
+        {duplicateNodes.length > 0 && (
+          <Typography variant={isTablet ? 'subheading-medium' : 'subheading-large'}>
+            Total Duplicate Nodes: {duplicateNodes.length}
+          </Typography>
+        )}
+      </Flex>
       <DataGrid
         ref={tableRef}
         isResizable={true}
@@ -258,19 +278,24 @@ export default function DeletePopUpForOrphanNodes({
       />
       <Flex className='mt-3' flexDirection='row' justifyContent='flex-end'>
         <ButtonWithToolTip
-          onClick={() => setshowDeletePopUp(true)}
+          onClick={async () => {
+            await clickHandler();
+            await fetchDuplicateNodes();
+          }}
           size='large'
-          loading={loading}
+          loading={mergeAPIloading}
           text={
             isLoading
-              ? 'Fetching Orphan Nodes'
-              : !isLoading && !orphanNodes.length
+              ? 'Fetching Duplicate Nodes'
+              : !isLoading && !duplicateNodes.length
               ? 'No Nodes Found'
               : !table.getSelectedRowModel().rows.length
               ? 'No Nodes Selected'
-              : `Delete Selected Nodes (${table.getSelectedRowModel().rows.length})`
+              : mergeAPIloading
+              ? 'Merging'
+              : `Merge Selected Nodes (${table.getSelectedRowModel().rows.length})`
           }
-          label='Orphan Node deletion button'
+          label='Merge Duplicate Node Button'
           disabled={!table.getSelectedRowModel().rows.length}
           placement='top'
         >

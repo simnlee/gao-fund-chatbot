@@ -29,13 +29,11 @@ from google.oauth2.credentials import Credentials
 import os
 from typing import List
 from google.cloud import logging as gclogger
-from src.logger import CustomLogger
 from datetime import datetime, timezone
 from fastapi.middleware.gzip import GZipMiddleware
 import time
 import gc
 
-logger = CustomLogger()
 CHUNK_DIR = os.path.join(os.path.dirname(__file__), "chunks")
 MERGED_DIR = os.path.join(os.path.dirname(__file__), "merged_files")
 
@@ -59,10 +57,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 # app.add_middleware(GZipMiddleware, minimum_size=1000)
-
-is_gemini_enabled = os.environ.get("GEMINI_ENABLED", "False").lower() in ("true", "1", "yes")
-if is_gemini_enabled:
-    add_routes(app,ChatVertexAI(), path="/vertexai")
 
 app.add_api_route("/health", health([healthy_condition, healthy]))
 
@@ -95,23 +89,6 @@ async def create_source_knowledge_graph_url(
             source = wiki_query
             
         graph = create_graph_database_connection(uri, userName, password, database)
-        if source_type == 's3 bucket' and aws_access_key_id and aws_secret_access_key:
-            lst_file_name,success_count,failed_count = await asyncio.to_thread(create_source_node_graph_url_s3,graph, model, source_url, aws_access_key_id, aws_secret_access_key, source_type
-            )
-        elif source_type == 'gcs bucket':
-            lst_file_name,success_count,failed_count = create_source_node_graph_url_gcs(graph, model, gcs_project_id, gcs_bucket_name, gcs_bucket_folder, source_type,Credentials(access_token)
-            )
-        elif source_type == 'web-url':
-            lst_file_name,success_count,failed_count = await asyncio.to_thread(create_source_node_graph_web_url,graph, model, source_url, source_type
-            )  
-        elif source_type == 'youtube':
-            lst_file_name,success_count,failed_count = await asyncio.to_thread(create_source_node_graph_url_youtube,graph, model, source_url, source_type
-            )
-        elif source_type == 'Wikipedia':
-            lst_file_name,success_count,failed_count = await asyncio.to_thread(create_source_node_graph_url_wikipedia,graph, model, wiki_query, source_type
-            )
-        else:
-            return create_api_response('Failed',message='source_type is other than accepted source')
 
         message = f"Source Node created successfully for source type: {source_type} and source: {source}"
         josn_obj = {'api_name':'url_scan','db_url':uri,'url_scanned_file':lst_file_name, 'source_url':source_url, 'wiki_query':wiki_query, 'logging_time': formatted_time(datetime.now(timezone.utc))}
